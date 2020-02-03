@@ -152,7 +152,8 @@ function playerMove(direction) {
 
 function playerReset() {
   const pieces = 'ILJOTSZ';
-  player.matrix = createPiece(pieces[pieces.length * Math.random() | 0]);
+  player.matrix = player.nextMatrix !== null ? player.nextMatrix : createPiece(pieces[pieces.length * Math.random() | 0]);
+  player.nextMatrix = createPiece(pieces[pieces.length * Math.random() | 0]);
   player.pos.y = 0;
   player.pos.x = (arena[0].length / 2 | 0)
     - (player.matrix.length / 2 | 0);
@@ -161,6 +162,7 @@ function playerReset() {
     player.score = 0;
     updateScore()
   }
+  console.table(player.nextMatrix);
 }
 
 function playerRotate(direction) {
@@ -214,6 +216,7 @@ const arena = createMatrix(12, 20);
 const player = {
   pos: {x: 0, y: 0},
   matrix: null,
+  nextMatrix: null,
   score: 0
 };
 
