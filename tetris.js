@@ -1,7 +1,9 @@
 const canvas = document.getElementById("tetris");
 const context = canvas.getContext("2d");
-
 context.scale(20, 20);
+
+let dropInterval = 1000;
+const dropIntervalDecay = 0.97;
 
 function arenaSweep() {
   let rowCount = 1;
@@ -17,6 +19,7 @@ function arenaSweep() {
     y++;
     player.score += rowCount * 10;
     rowCount++;
+    dropInterval *= dropIntervalDecay;
   }
 }
 
@@ -119,7 +122,6 @@ function drawMatrix(matrix, offset) {
 
 let lastTime = 0;
 let dropCounter = 0;
-let dropInterval = 1000;
 
 function merge(arena, player) {
   player.matrix.forEach((row, y) => {
@@ -162,7 +164,6 @@ function playerReset() {
     player.score = 0;
     updateScore()
   }
-  console.table(player.nextMatrix);
 }
 
 function playerRotate(direction) {
