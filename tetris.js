@@ -123,6 +123,7 @@ Game.prototype = {
     context.fillRect(0, 0, canvas.width, canvas.height);
     this.drawMatrix(this.player.matrix, this.player.pos);
     this.drawMatrix(this.arena, {x: 0, y: 0});
+    this.updateScore();
   },
 
   drawMatrix: function (matrix, offset) {
@@ -154,8 +155,8 @@ Game.prototype = {
       this.merge(this.arena, this.player);
       this.playerReset();
       this.arenaSweep();
-      this.updateScore();
     }
+    this.neatPlayer.score -= 0.1;
   },
 
   playerMove: function (direction) {
@@ -180,7 +181,7 @@ Game.prototype = {
           counter += this.arena[x][y];
         }
       }
-      this.neatPlayer.score += counter / 10 + this.player.score;
+      this.neatPlayer.score += counter / 100 + this.player.score;
     }
   },
 
