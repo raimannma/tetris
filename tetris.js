@@ -2,40 +2,8 @@ const canvas = document.getElementById("tetris");
 const context = canvas.getContext("2d");
 context.scale(20, 20);
 
-let dropInterval = 1000;
-const dropIntervalDecay = 0.97;
+const GAMES = 50;
 
-function arenaSweep() {
-  let rowCount = 1;
-  outer: for (let y = arena.length - 1; y >= 0; y--) {
-    for (let x = 0; x < arena[y].length; x++) {
-      if (arena[y][x] === 0) {
-        continue outer;
-      }
-    }
-
-    const row = arena.splice(y, 1)[0].fill(0);
-    arena.unshift(row);
-    y++;
-    player.score += rowCount * 10;
-    rowCount++;
-    dropInterval *= dropIntervalDecay;
-  }
-}
-
-function collide(arena, player) {
-  const [matrix, offset] = [player.matrix, player.pos];
-  for (let y = 0; y < matrix.length; ++y) {
-    for (let x = 0; x < matrix[y].length; ++x) {
-      if (matrix[y][x] !== 0
-        && (arena[y + offset.y] === undefined
-          || arena[y + offset.y][x + offset.x] !== 0)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 function createMatrix(width, height) {
   const matrix = [];
@@ -45,194 +13,284 @@ function createMatrix(width, height) {
   return matrix;
 }
 
-function createPiece(type) {
-  if (type === 'T') {
-    return [
-      [0, 0, 0],
-      [1, 1, 1],
-      [0, 1, 0],
-    ];
-  } else if (type === 'O') {
-    return [
-      [2, 2],
-      [2, 2],
-    ];
-  } else if (type === 'L') {
-    return [
-      [0, 3, 0],
-      [0, 3, 0],
-      [0, 3, 3],
-    ];
-  } else if (type === 'J') {
-    return [
-      [0, 4, 0],
-      [0, 4, 0],
-      [4, 4, 0],
-    ];
-  } else if (type === 'I') {
-    return [
-      [0, 5, 0, 0],
-      [0, 5, 0, 0],
-      [0, 5, 0, 0],
-      [0, 5, 0, 0],
-    ];
-  } else if (type === 'S') {
-    return [
-      [0, 0, 0],
-      [0, 6, 6],
-      [6, 6, 0],
-    ];
-  } else if (type === 'Z') {
-    return [
-      [0, 0, 0],
-      [7, 7, 0],
-      [0, 7, 7],
-    ];
-  }
+function Game(id, neatPlayer) {
+  this.arena = createMatrix(12, 20);
+  this.player = {
+    pos: {x: 0, y: 0},
+    matrix: null,
+    nextMatrix: null,
+    score: 0
+  };
+  this.colors = [
+    null,
+    'red',
+    'blue',
+    'violet',
+    'green',
+    'purple',
+    'orange',
+    'pink'
+  ];
+
+  this.id = id;
+  this.gameOver = false;
+  this.neatPlayer = neatPlayer;
+  this.neatPlayer.score = 0;
+
+  this.playerReset();
 }
 
-const colors = [
-  null,
-  'red',
-  'blue',
-  'violet',
-  'green',
-  'purple',
-  'orange',
-  'pink'
-];
-
-function draw() {
-  context.fillStyle = "black";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  drawMatrix(player.matrix, player.pos);
-  drawMatrix(arena, {x: 0, y: 0});
-}
-
-function drawMatrix(matrix, offset) {
-  matrix.forEach((row, y) => {
-    row.forEach((value, x) => {
-      if (value !== 0) {
-        context.fillStyle = colors[value];
-        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+Game.prototype = {
+  arenaSweep: function () {
+    let rowCount = 1;
+    outer: for (let y = this.arena.length - 1; y >= 0; y--) {
+      for (let x = 0; x < this.arena[y].length; x++) {
+        if (this.arena[y][x] === 0) {
+          continue outer;
+        }
       }
-    })
-  });
-}
 
-let lastTime = 0;
-let dropCounter = 0;
+      const row = this.arena.splice(y, 1)[0].fill(0);
+      this.arena.unshift(row);
+      y++;
+      this.player.score += rowCount * 10;
+      rowCount++;
+    }
+  },
 
-function merge(arena, player) {
-  player.matrix.forEach((row, y) => {
-    row.forEach((value, x) => {
-      if (value !== 0) {
-        arena[y + player.pos.y][x + player.pos.x] = value;
+  collide: function (arena, player) {
+    const [matrix, offset] = [player.matrix, player.pos];
+    for (let y = 0; y < matrix.length; ++y) {
+      for (let x = 0; x < matrix[y].length; ++x) {
+        if (matrix[y][x] !== 0
+          && (arena[y + offset.y] === undefined
+            || arena[y + offset.y][x + offset.x] !== 0)) {
+          return true;
+        }
       }
+    }
+    return false;
+  },
+
+  createPiece: function (type) {
+    if (type === 'T') {
+      return [
+        [0, 0, 0],
+        [1, 1, 1],
+        [0, 1, 0],
+      ];
+    } else if (type === 'O') {
+      return [
+        [2, 2],
+        [2, 2],
+      ];
+    } else if (type === 'L') {
+      return [
+        [0, 3, 0],
+        [0, 3, 0],
+        [0, 3, 3],
+      ];
+    } else if (type === 'J') {
+      return [
+        [0, 4, 0],
+        [0, 4, 0],
+        [4, 4, 0],
+      ];
+    } else if (type === 'I') {
+      return [
+        [0, 5, 0, 0],
+        [0, 5, 0, 0],
+        [0, 5, 0, 0],
+        [0, 5, 0, 0],
+      ];
+    } else if (type === 'S') {
+      return [
+        [0, 0, 0],
+        [0, 6, 6],
+        [6, 6, 0],
+      ];
+    } else if (type === 'Z') {
+      return [
+        [0, 0, 0],
+        [7, 7, 0],
+        [0, 7, 7],
+      ];
+    }
+  },
+
+  draw: function () {
+    context.fillStyle = "black";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    this.drawMatrix(this.player.matrix, this.player.pos);
+    this.drawMatrix(this.arena, {x: 0, y: 0});
+  },
+
+  drawMatrix: function (matrix, offset) {
+    matrix.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          context.fillStyle = this.colors[value];
+          context.fillRect(x + offset.x, y + offset.y, 1, 1);
+        }
+      })
+    });
+  },
+
+  merge: function (arena, player) {
+    this.neatPlayer.score -= 0.1;
+    player.matrix.forEach((row, y) => {
+      row.forEach((value, x) => {
+        if (value !== 0) {
+          arena[y + player.pos.y][x + player.pos.x] = value;
+        }
+      })
     })
-  })
-}
+  },
 
-function playerDrop() {
-  player.pos.y++;
-  if (collide(arena, player)) {
-    player.pos.y--;
-    merge(arena, player);
-    playerReset();
-    arenaSweep();
-    updateScore();
-  }
-  dropCounter = 0;
-}
-
-function playerMove(direction) {
-  player.pos.x += direction;
-  if (collide(arena, player)) {
-    playerMove(-direction);
-  }
-}
-
-function playerReset() {
-  const pieces = 'ILJOTSZ';
-  player.matrix = player.nextMatrix !== null ? player.nextMatrix : createPiece(pieces[pieces.length * Math.random() | 0]);
-  player.nextMatrix = createPiece(pieces[pieces.length * Math.random() | 0]);
-  player.pos.y = 0;
-  player.pos.x = (arena[0].length / 2 | 0)
-    - (player.matrix.length / 2 | 0);
-  if (collide(arena, player)) {
-    arena.forEach(row => row.fill(0));
-    player.score = 0;
-    updateScore()
-  }
-}
-
-function playerRotate(direction) {
-  const posX = player.pos.x;
-  let offset = 1;
-
-  rotate(player.matrix, direction);
-
-  while (collide(arena, player)) {
-    player.pos.x += offset;
-    offset = -(offset + (offset > 0 ? 1 : -1));
-    if (offset > player.matrix[0].length) {
-      rotate(player.matrix, -direction);
-      player.pos.x = posX;
-      return;
+  playerDrop: function () {
+    this.player.pos.y++;
+    if (this.collide(this.arena, this.player)) {
+      this.player.pos.y--;
+      this.merge(this.arena, this.player);
+      this.playerReset();
+      this.arenaSweep();
+      this.updateScore();
     }
-  }
-}
+  },
 
-function rotate(matrix, direction) {
-  for (let y = 0; y < matrix.length; y++) {
-    for (let x = 0; x < y; x++) {
-      [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+  playerMove: function (direction) {
+    this.player.pos.x += direction;
+    if (this.collide(this.arena, this.player)) {
+      this.player.pos.x -= direction;
     }
-  }
-  if (direction > 0) {
-    matrix.forEach(row => row.reverse());
-  } else {
-    matrix.reverse();
-  }
-}
+  },
 
-function update(time = 0) {
-  const deltaTime = time - lastTime;
-  lastTime = time;
-  dropCounter += deltaTime;
-  if (dropCounter > dropInterval) {
-    playerDrop();
-  }
+  playerReset: function () {
+    const pieces = 'ILJOTSZ';
+    this.player.matrix = this.player.nextMatrix !== null ? this.player.nextMatrix : this.createPiece(pieces[pieces.length * Math.random() | 0]);
+    this.player.nextMatrix = this.createPiece(pieces[pieces.length * Math.random() | 0]);
+    this.player.pos.y = 0;
+    this.player.pos.x = (this.arena[0].length / 2 | 0) - (this.player.matrix.length / 2 | 0);
+    if (this.collide(this.arena, this.player)) {
+      //GameOver
+      this.gameOver = true;
+      let counter = 0;
+      for (let x = 0; x < this.arena.length; x++) {
+        for (let y = 0; y < this.arena[x].length; y++) {
+          counter += this.arena[x][y];
+        }
+      }
+      this.neatPlayer.score += counter / 10 + this.player.score;
+    }
+  },
 
-  draw();
-  requestAnimationFrame(update);
-}
+  playerRotate: function (direction) {
+    const posX = this.player.pos.x;
+    let offset = 1;
 
-function updateScore() {
-  document.getElementById('score').innerText = player.score;
-}
+    this.rotate(this.player.matrix, direction);
 
-const arena = createMatrix(12, 20);
+    while (this.collide(this.arena, this.player)) {
+      this.player.pos.x += offset;
+      offset = -(offset + (offset > 0 ? 1 : -1));
+      if (offset > this.player.matrix[0].length) {
+        this.rotate(this.player.matrix, -direction);
+        this.player.pos.x = posX;
+        return;
+      }
+    }
+  },
 
-const player = {
-  pos: {x: 0, y: 0},
-  matrix: null,
-  nextMatrix: null,
-  score: 0
+  rotate: function (matrix, direction) {
+    for (let y = 0; y < matrix.length; y++) {
+      for (let x = 0; x < y; x++) {
+        [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+      }
+    }
+    if (direction > 0) {
+      matrix.forEach(row => row.reverse());
+    } else {
+      matrix.reverse();
+    }
+  },
+
+  update: function () {
+    this.playerDrop();
+
+    let input = [];
+    for (let i = 0; i < this.arena.length; i++) {
+      input.push(...this.arena[i]);
+    }
+
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        if (this.player.matrix.length > i && this.player.matrix[i].length > j) {
+          input.push(this.player.matrix[i][j]);
+        } else {
+          input.push(0);
+        }
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        if (this.player.nextMatrix.length > i && this.player.nextMatrix[i].length > j) {
+          input.push(this.player.nextMatrix[i][j]);
+        } else {
+          input.push(0);
+        }
+      }
+    }
+
+    let output = this.neatPlayer.activate(input, {trace: false, no_trace: true});
+    let maxVal = output[0];
+    let maxIndex = 0;
+    for (let i = 1; i < output.length; i++) {
+      if (output[i] > maxVal) {
+        maxIndex = i;
+        maxVal = output[i];
+      }
+    }
+
+    if (maxIndex === 0) {
+      this.playerMove(-1);
+    } else if (maxIndex === 0) {
+      this.playerMove(1);
+    } else if (maxIndex === 0) {
+      this.playerRotate(-1);
+    } else {
+      this.playerRotate(1);
+    }
+
+    if (this.id === 0) {
+      this.draw();
+    }
+  },
+
+  updateScore: function () {
+    document.getElementById('score').innerText = this.player.score;
+  },
 };
 
-document.addEventListener('keydown', event => {
-  if (event.keyCode === 37) {
-    playerMove(-1);
-  } else if (event.keyCode === 39) {
-    playerMove(1);
-  } else if (event.keyCode === 40) {
-    playerDrop();
-  } else if (event.keyCode === 81) {
-    playerRotate(-1);
-  } else if (event.keyCode === 87) {
-    playerRotate(1);
+let options = {
+  population_size: GAMES,
+  elitism: 2,
+  mutation_rate: 0.7,
+  mutation_amount: 2,
+};
+
+let neat = new carrot.Neat(272, 4, options);
+let generation = 0;
+
+setInterval(async function () {
+  let games = [];
+  for (let i = 0; i < GAMES; i++) {
+    games.push(new Game(i, neat.population[i]))
   }
-});
-playerReset();
-update();
+  for (let i = 0; i < games.length; i++) {
+    while (!games[i].gameOver) {
+      games[i].update();
+    }
+  }
+  generation++;
+  await neat.evolve().then(console.log("Generation: " + generation));
+}, 0);
