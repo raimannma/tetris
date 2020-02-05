@@ -2,8 +2,20 @@ const canvas = document.getElementById("tetris");
 const context = canvas.getContext("2d");
 context.scale(20, 20);
 
-const GAMES = 50;
+const GAMES = 24;
 
+function save(filename, text) {
+  let element = document.createElement('a');
+  element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+  element.setAttribute('download', filename);
+
+  element.style.display = 'none';
+  document.body.appendChild(element);
+
+  element.click();
+
+  document.body.removeChild(element);
+}
 
 function createMatrix(width, height) {
   const matrix = [];
@@ -73,43 +85,43 @@ Game.prototype = {
   },
 
   createPiece: function (type) {
-    if (type === 'T') {
+    if (type === 0) {
       return [
         [0, 0, 0],
         [1, 1, 1],
         [0, 1, 0],
       ];
-    } else if (type === 'O') {
+    } else if (type === 1) {
       return [
         [2, 2],
         [2, 2],
       ];
-    } else if (type === 'L') {
+    } else if (type === 2) {
       return [
         [0, 3, 0],
         [0, 3, 0],
         [0, 3, 3],
       ];
-    } else if (type === 'J') {
+    } else if (type === 3) {
       return [
         [0, 4, 0],
         [0, 4, 0],
         [4, 4, 0],
       ];
-    } else if (type === 'I') {
+    } else if (type === 4) {
       return [
         [0, 5, 0, 0],
         [0, 5, 0, 0],
         [0, 5, 0, 0],
         [0, 5, 0, 0],
       ];
-    } else if (type === 'S') {
+    } else if (type === 5) {
       return [
         [0, 0, 0],
         [0, 6, 6],
         [6, 6, 0],
       ];
-    } else if (type === 'Z') {
+    } else {
       return [
         [0, 0, 0],
         [7, 7, 0],
@@ -138,7 +150,6 @@ Game.prototype = {
   },
 
   merge: function (arena, player) {
-    this.neatPlayer.score -= 0.1;
     player.matrix.forEach((row, y) => {
       row.forEach((value, x) => {
         if (value !== 0) {
@@ -156,7 +167,7 @@ Game.prototype = {
       this.playerReset();
       this.arenaSweep();
     }
-    this.neatPlayer.score -= 0.1;
+    this.neatPlayer.score = Math.max(-1, this.neatPlayer.score - 0.1);
   },
 
   playerMove: function (direction) {
@@ -167,9 +178,8 @@ Game.prototype = {
   },
 
   playerReset: function () {
-    const pieces = 'ILJOTSZ';
-    this.player.matrix = this.player.nextMatrix !== null ? this.player.nextMatrix : this.createPiece(pieces[pieces.length * Math.random() | 0]);
-    this.player.nextMatrix = this.createPiece(pieces[pieces.length * Math.random() | 0]);
+    this.player.matrix = this.player.nextMatrix !== null ? this.player.nextMatrix : this.createPiece(7 * Math.random() | 0);
+    this.player.nextMatrix = this.createPiece(7 * Math.random() | 0);
     this.player.pos.y = 0;
     this.player.pos.x = (this.arena[0].length / 2 | 0) - (this.player.matrix.length / 2 | 0);
     if (this.collide(this.arena, this.player)) {
@@ -181,7 +191,12 @@ Game.prototype = {
           counter += this.arena[x][y];
         }
       }
-      this.neatPlayer.score += counter / 100 + this.player.score;
+      this.neatPlayer.score = Math.min(
+        this.neatPlayer.score + counter / 1000 + this.player.score / 10,
+        1);
+      if (this.player.score !== 0) {
+        console.log(this.neatPlayer.score);
+      }
     }
   },
 
@@ -218,10 +233,7 @@ Game.prototype = {
   update: function () {
     this.playerDrop();
 
-    let input = [];
-    for (let i = 0; i < this.arena.length; i++) {
-      input.push(...this.arena[i]);
-    }
+    let input = this.arena.flat(Infinity);
 
     for (let i = 0; i < 4; i++) {
       for (let j = 0; j < 4; j++) {
@@ -268,7 +280,7 @@ Game.prototype = {
   },
 
   updateScore: function () {
-    document.getElementById('score').innerText = this.player.score;
+    document.getElementById('score').innerText = "Score: " + this.neatPlayer.score;
   },
 };
 
@@ -276,22 +288,43 @@ let options = {
   population_size: GAMES,
   elitism: 2,
   mutation_rate: 0.7,
-  mutation_amount: 2,
+  mutation_amount: 5,
+  selection: carrot.methods.selection.TOURNAMENT,
+  mutation: carrot.methods.mutation.FFW,
 };
 
 let neat = new carrot.Neat(272, 4, options);
 let generation = 0;
 
-setInterval(async function () {
-  let games = [];
-  for (let i = 0; i < GAMES; i++) {
-    games.push(new Game(i, neat.population[i]))
-  }
-  for (let i = 0; i < games.length; i++) {
-    while (!games[i].gameOver) {
-      games[i].update();
+let games = [];
+
+function timeout() {
+  setTimeout(async function () {
+    games = [];
+    for (let i = 0; i < GAMES; i++) {
+      games.push(new Game(i, neat.population[i]))
     }
-  }
-  generation++;
-  await neat.evolve().then(console.log("Generation: " + generation));
-}, 0);
+    // for (let i = 0; i < games.length; i++) {
+    //   while (!games[i].gameOver) {
+    //     games[i].update();
+    //   }
+    // }
+    async.each(games, function (game) {
+      while (!game.gameOver) {
+        game.update();
+      }
+    });
+
+    // if (generation % 10000 === 0) {
+    //   save("neat.json", JSON.stringify(neat.getFittest().toJSON()));
+    // }
+
+    generation++;
+    // console.log("Generation: " + generation);
+    document.getElementById('generation').innerText = "Generation: " + generation;
+    await neat.evolve();
+    timeout();
+  }, 0);
+}
+
+timeout();
