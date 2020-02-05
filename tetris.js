@@ -2,20 +2,7 @@ const canvas = document.getElementById("tetris");
 const context = canvas.getContext("2d");
 context.scale(20, 20);
 
-const GAMES = 24;
-
-function save(filename, text) {
-  let element = document.createElement('a');
-  element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-  element.setAttribute('download', filename);
-
-  element.style.display = 'none';
-  document.body.appendChild(element);
-
-  element.click();
-
-  document.body.removeChild(element);
-}
+const GAMES = 30;
 
 function createMatrix(width, height) {
   const matrix = [];
@@ -25,7 +12,7 @@ function createMatrix(width, height) {
   return matrix;
 }
 
-function Game(id, neatPlayer) {
+function Game(neatPlayer) {
   this.arena = createMatrix(12, 20);
   this.player = {
     pos: {x: 0, y: 0},
@@ -43,8 +30,6 @@ function Game(id, neatPlayer) {
     'orange',
     'pink'
   ];
-
-  this.id = id;
   this.gameOver = false;
   this.neatPlayer = neatPlayer;
   this.neatPlayer.score = 0;
@@ -67,6 +52,7 @@ Game.prototype = {
       y++;
       this.player.score += rowCount * 10;
       rowCount++;
+      console.log("ROW CLEARED")
     }
   },
 
@@ -167,7 +153,17 @@ Game.prototype = {
       this.playerReset();
       this.arenaSweep();
     }
-    this.neatPlayer.score = Math.max(-1, this.neatPlayer.score - 0.1);
+    let height;
+    outer: for (let i = 0; i < this.arena.length; i++) {
+      for (let j = 0; j < this.arena.length; j++) {
+        if (this.arena[i][j] !== 0) {
+          height = this.arena.length - i;
+          break outer;
+        }
+      }
+    }
+
+    this.neatPlayer.score = Math.max(-1, this.neatPlayer.score + (height < 10 ? 0.1 : -0.1));
   },
 
   playerMove: function (direction) {
@@ -194,9 +190,6 @@ Game.prototype = {
       this.neatPlayer.score = Math.min(
         this.neatPlayer.score + counter / 1000 + this.player.score / 10,
         1);
-      if (this.player.score !== 0) {
-        console.log(this.neatPlayer.score);
-      }
     }
   },
 
@@ -254,28 +247,21 @@ Game.prototype = {
       }
     }
 
+    for (let i = 0; i < input.length; i++) {
+      input[i] = input[i] === 0 ? 0 : 1;
+    }
+
     let output = this.neatPlayer.activate(input, {trace: false, no_trace: true});
-    let maxVal = output[0];
-    let maxIndex = 0;
-    for (let i = 1; i < output.length; i++) {
-      if (output[i] > maxVal) {
-        maxIndex = i;
-        maxVal = output[i];
-      }
+    for (let i = 0; i < output.length; i++) {
+      output[i] = Math.round(output[i]);
     }
 
-    if (maxIndex === 0) {
+    if (output[0] === 1 && output[1] === 0) {
       this.playerMove(-1);
-    } else if (maxIndex === 0) {
+    } else if (output[0] === 0 && output[1] === 1) {
       this.playerMove(1);
-    } else if (maxIndex === 0) {
-      this.playerRotate(-1);
-    } else {
+    } else if (output[0] === 1 && output[1] === 1) {
       this.playerRotate(1);
-    }
-
-    if (this.id === 0) {
-      this.draw();
     }
   },
 
@@ -287,13 +273,10 @@ Game.prototype = {
 let options = {
   population_size: GAMES,
   elitism: 2,
-  mutation_rate: 0.7,
-  mutation_amount: 5,
-  selection: carrot.methods.selection.TOURNAMENT,
   mutation: carrot.methods.mutation.FFW,
 };
 
-let neat = new carrot.Neat(272, 4, options);
+let neat = new carrot.Neat(272, 3, options);
 let generation = 0;
 
 let games = [];
@@ -302,22 +285,17 @@ function timeout() {
   setTimeout(async function () {
     games = [];
     for (let i = 0; i < GAMES; i++) {
-      games.push(new Game(i, neat.population[i]))
-    }
-    // for (let i = 0; i < games.length; i++) {
-    //   while (!games[i].gameOver) {
-    //     games[i].update();
-    //   }
-    // }
-    async.each(games, function (game) {
-      while (!game.gameOver) {
-        game.update();
+      games.push(new Game(neat.population[i]));
+      while (!games[i].gameOver) {
+        games[i].update();
       }
-    });
+    }
 
     // if (generation % 10000 === 0) {
     //   save("neat.json", JSON.stringify(neat.getFittest().toJSON()));
     // }
+
+    games[0].draw();
 
     generation++;
     // console.log("Generation: " + generation);
