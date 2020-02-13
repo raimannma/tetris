@@ -2,7 +2,23 @@ const canvas = document.getElementById("tetris");
 const context = canvas.getContext("2d");
 context.scale(20, 20);
 
-const GAMES = 30;
+function save(data, filename, type) {
+  let file = new Blob([data], {type: type});
+  if (window.navigator.msSaveOrOpenBlob) // IE10+
+    window.navigator.msSaveOrOpenBlob(file, filename);
+  else { // Others
+    var a = document.createElement("a"),
+      url = URL.createObjectURL(file);
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }, 0);
+  }
+}
 
 function createMatrix(width, height) {
   const matrix = [];
@@ -12,7 +28,7 @@ function createMatrix(width, height) {
   return matrix;
 }
 
-function Game(neatPlayer) {
+function Game(aiPlayer) {
   this.arena = createMatrix(12, 20);
   this.player = {
     pos: {x: 0, y: 0},
@@ -31,8 +47,11 @@ function Game(neatPlayer) {
     'pink'
   ];
   this.gameOver = false;
-  this.neatPlayer = neatPlayer;
-  this.neatPlayer.score = 0;
+  this.lastHeight = 0;
+  this.aiPlayer = aiPlayer;
+  if (aiPlayer instanceof carrot.Network) {
+    this.aiPlayer.score = 0;
+  }
 
   this.playerReset();
 }
@@ -52,8 +71,13 @@ Game.prototype = {
       y++;
       this.player.score += rowCount * 10;
       rowCount++;
-      console.log("ROW CLEARED")
+      console.log("ROW CLEARED");
+
+      this.aiPlayer.learn(Math.min(1, 0.1 * rowCount));
+
+      this.aiPlayer.avgReward += Math.min(1, 0.1 * rowCount) / 20;
     }
+    return rowCount >= 2;
   },
 
   collide: function (arena, player) {
@@ -147,23 +171,39 @@ Game.prototype = {
 
   playerDrop: function () {
     this.player.pos.y++;
+
     if (this.collide(this.arena, this.player)) {
       this.player.pos.y--;
       this.merge(this.arena, this.player);
-      this.playerReset();
-      this.arenaSweep();
-    }
-    let height;
-    outer: for (let i = 0; i < this.arena.length; i++) {
-      for (let j = 0; j < this.arena.length; j++) {
-        if (this.arena[i][j] !== 0) {
-          height = this.arena.length - i;
-          break outer;
+      let height = 20;
+      outer: for (let i = 0; i < this.arena.length; i++) {
+        for (let j = 0; j < this.arena[i].length; j++) {
+          if (this.arena[i][j] !== 0) {
+            height = this.arena.length - i;
+            break outer;
+          }
         }
       }
+      this.playerReset();
+      if (!this.arenaSweep()) {
+        if (this.lastHeight < height) {
+          this.aiPlayer.learn((this.lastHeight - height) / 4);
+          this.aiPlayer.avgReward += (this.lastHeight - height) / 4;
+        } else if (this.lastHeight === height) {
+          this.aiPlayer.learn(0.01);
+          this.aiPlayer.avgReward += 0.01;
+        } else {
+          this.aiPlayer.learn(-0.01);
+          this.aiPlayer.avgReward -= 0.01;
+        }
+      }
+      this.lastHeight = height;
+    } else if (this.aiPlayer instanceof carrot.Network) {
+      // this.aiPlayer.score = Math.max(-1, this.aiPlayer.score + (height < 10 ? 0.1 : -0.1));
+    } else {
+      this.aiPlayer.learn(-0.01);
+      this.aiPlayer.avgReward -= 0.01;
     }
-
-    this.neatPlayer.score = Math.max(-1, this.neatPlayer.score + (height < 10 ? 0.1 : -0.1));
   },
 
   playerMove: function (direction) {
@@ -187,9 +227,13 @@ Game.prototype = {
           counter += this.arena[x][y];
         }
       }
-      this.neatPlayer.score = Math.min(
-        this.neatPlayer.score + counter / 1000 + this.player.score / 10,
-        1);
+      if (this.aiPlayer instanceof carrot.Network) {
+        this.aiPlayer.score = Math.min(
+          this.aiPlayer.score + counter / 1000 + this.player.score / 10,
+          1);
+      }
+      this.arena.forEach(row => row.fill(0));
+      this.player.score = 0;
     }
   },
 
@@ -224,10 +268,12 @@ Game.prototype = {
   },
 
   update: function () {
+    this.draw();
     this.playerDrop();
 
     let input = this.arena.flat(Infinity);
-
+    input.push(this.player.pos.x / 12);
+    input.push(this.player.pos.y / 20);
     for (let i = 0; i < 4; i++) {
       for (let j = 0; j < 4; j++) {
         if (this.player.matrix.length > i && this.player.matrix[i].length > j) {
@@ -250,57 +296,102 @@ Game.prototype = {
     for (let i = 0; i < input.length; i++) {
       input[i] = input[i] === 0 ? 0 : 1;
     }
+    if (this.aiPlayer instanceof carrot.Network) {
+      let output = this.aiPlayer.activate(input, {trace: false, no_trace: true});
+      for (let i = 0; i < output.length; i++) {
+        output[i] = Math.round(output[i]);
+      }
 
-    let output = this.neatPlayer.activate(input, {trace: false, no_trace: true});
-    for (let i = 0; i < output.length; i++) {
-      output[i] = Math.round(output[i]);
-    }
-
-    if (output[0] === 1 && output[1] === 0) {
-      this.playerMove(-1);
-    } else if (output[0] === 0 && output[1] === 1) {
-      this.playerMove(1);
-    } else if (output[0] === 1 && output[1] === 1) {
-      this.playerRotate(1);
+      if (output[0] === 1 && output[1] === 0) {
+        this.playerMove(-1);
+      } else if (output[0] === 0 && output[1] === 1) {
+        this.playerMove(1);
+      } else if (output[0] === 1 && output[1] === 1) {
+        this.playerRotate(1);
+      }
+    } else {
+      let action = this.aiPlayer.act(input);
+      if (action === 3) {
+        this.playerMove(-1);
+      } else if (action === 1) {
+        this.playerMove(1);
+      } else if (action === 2) {
+        this.playerRotate(1);
+      }
     }
   },
 
   updateScore: function () {
-    document.getElementById('score').innerText = "Score: " + this.neatPlayer.score;
+    if (this.aiPlayer instanceof carrot.Network) {
+      document.getElementById('score').innerText = "Score: " + this.aiPlayer.score;
+    }
   },
 };
 
-let options = {
-  population_size: GAMES,
-  elitism: 2,
-  mutation: carrot.methods.mutation.FFW,
+// NEAT
+// const GAMES = 50;
+// let neatOptions = {
+//   population_size: GAMES,
+//   elitism: 2,
+//   mutation: carrot.methods.mutation.FFW,
+// };
+// let neat = new carrot.Neat(274, 2, neatOptions);
+// let games = [];
+// let generation = 0;
+// function timeout() {
+//   setTimeout(async function () {
+//     games = [];
+//     for (let i = 0; i < GAMES; i++) {
+//       games.push(new Game(neat.population[i], false));
+//       while (!games[i].gameOver) {
+//         games[i].update();
+//       }
+//     }
+//
+//     if (generation % 100 === 0) {
+//       save(JSON.stringify(neat.getFittest().toJSON()), "neat.json", "json");
+//     }
+//
+//     games[0].draw();
+//
+//     generation++;
+//     // console.log("Generation: " + generation);
+//     document.getElementById('generation').innerText = "Generation: " + generation;
+//     await neat.evolve();
+//     timeout();
+//   }, 0);
+// }
+//
+// timeout();
+
+//DQN
+let dqnOptions = {
+  hiddenNeurons: [5],
+  isDoubleDQN: false,
+  isUsingPER: true,
+  startLearningThreshold: 20000,
+  experienceSize: 20000,
+  learningStepsPerIteration: 10,
+  gamma: 0.9,
+  exploreDecay: 1,
+  explore: 0.5
 };
+let agent = new carrot.DQN(274, 4, dqnOptions);
+agent.avgReward = 0;
 
-let neat = new carrot.Neat(272, 3, options);
-let generation = 0;
-
-let games = [];
+let restarts = 0;
+let game = new Game(agent);
 
 function timeout() {
-  setTimeout(async function () {
-    games = [];
-    for (let i = 0; i < GAMES; i++) {
-      games.push(new Game(neat.population[i]));
-      while (!games[i].gameOver) {
-        games[i].update();
-      }
+  setTimeout(function () {
+    if (game.gameOver) {
+      game.gameOver = false;
+      restarts++;
+      document.getElementById('generation').innerText = "Restarts: " + restarts;
+      document.getElementById('score').innerText = "AVG Reward: " + agent.avgReward / agent.timeStep;
     }
+    game.update();
 
-    // if (generation % 10000 === 0) {
-    //   save("neat.json", JSON.stringify(neat.getFittest().toJSON()));
-    // }
-
-    games[0].draw();
-
-    generation++;
-    // console.log("Generation: " + generation);
-    document.getElementById('generation').innerText = "Generation: " + generation;
-    await neat.evolve();
     timeout();
   }, 0);
 }
